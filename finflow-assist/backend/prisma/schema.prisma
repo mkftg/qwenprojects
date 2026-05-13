@@ -1,0 +1,486 @@
+// ============================================
+// FinFlow Assist - Prisma Schema
+// Loan Assistance & Eligibility Review Platform
+// ============================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// USER & AUTHENTICATION
+// ============================================
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  phone         String    @unique
+  password      String?   // Hashed with bcrypt
+  otp           String?
+  otpExpiry     DateTime?
+  role          Role      @default(CUSTOMER)
+  isVerified    Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  profile       Profile?
+  leads         Lead[]
+  payments      Payment[]
+  notifications Notification[]
+  
+  @@index([email])
+  @@index([phone])
+  @@index([role])
+}
+
+enum Role {
+  CUSTOMER
+  ADMIN
+  EMPLOYEE
+  SUPER_ADMIN
+}
+
+// ============================================
+// CUSTOMER PROFILE
+// ============================================
+
+model Profile {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Personal Information
+  fullName        String?
+  dateOfBirth     DateTime?
+  gender          String?
+  
+  // Contact Information
+  city            String?
+  state           String?
+  pincode         String?
+  address         String?
+  
+  // Financial Information
+  businessType    String?    // Salaried, Self-Employed, Business
+  monthlyTurnover Decimal?   @db.Decimal(15, 2)
+  monthlyIncome   Decimal?   @db.Decimal(15, 2)
+  gstAvailable    Boolean?   @default(false)
+  gstNumber       String?
+  panNumber       String?
+  existingLoans   Decimal?   @db.Decimal(15, 2)
+  cibilRange      String?    // 300-400, 400-500, 500-600, 600-700, 700-750, 750-900
+  requiredAmount  Decimal?   @db.Decimal(15, 2)
+  loanPurpose     String?
+  
+  // Employment Details
+  employmentType  String?    // Salaried, Self-Employed, Business Owner
+  companyName     String?
+  workExperience  Int?       // in years
+  businessVintage Int?       // in years (for business owners)
+  
+  lead            Lead?
+  
+  @@index([userId])
+}
+
+// ============================================
+// LEAD MANAGEMENT
+// ============================================
+
+model Lead {
+  id              String      @id @default(uuid())
+  userId          String      @unique
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profileId       String      @unique
+  profile         Profile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  
+  // Status Tracking
+  status          LeadStatus  @default(NEW)
+  priority        Priority    @default(NORMAL)
+  reviewType      ReviewType?
+  paymentId       String?     @unique
+  payment         Payment?    @relation(fields: [paymentId], references: [id])
+  
+  // Assignment
+  assignedTo      String?     // Employee ID
+  assignedAt      DateTime?
+  
+  // AI Analysis
+  leadScore       Int         @default(0)
+  fraudRisk       FraudRisk   @default(LOW)
+  aiNotes         String?
+  eligibilityScore Int?
+  
+  // Timeline
+  lastActivityAt  DateTime    @default(now())
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  // Relations
+  documents       Document[]
+  notes           Note[]
+  activities      ActivityLog[]
+  
+  @@index([status])
+  @@index([userId])
+  @@index([assignedTo])
+  @@index([leadScore])
+  @@index([fraudRisk])
+  @@index([createdAt])
+}
+
+enum LeadStatus {
+  NEW             // Just created
+  PAID            // Payment received
+  DOCS_PENDING    // Waiting for documents
+  UNDER_REVIEW    // Being reviewed
+  BANK_MATCHING   // Matching with banks/NBFCs
+  APPROVED_BY_PARTNER  // Partner approved
+  REJECTED        // Rejected
+  CLOSED          // Process completed
+}
+
+enum Priority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum ReviewType {
+  BASIC      // ₹199
+  PRIORITY   // ₹399
+}
+
+enum FraudRisk {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+// ============================================
+// PAYMENT MANAGEMENT
+// ============================================
+
+model Payment {
+  id                  String        @id @default(uuid())
+  userId              String
+  user                User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  leadId              String?       @unique
+  lead                Lead?         @relation(fields: [leadId], references: [id])
+  
+  // Razorpay Details
+  razorpayOrderId     String        @unique
+  razorpayPaymentId   String?
+  razorpaySignature   String?
+  
+  // Payment Details
+  amount              Decimal       @db.Decimal(10, 2)
+  currency            String        @default("INR")
+  status              PaymentStatus @default(PENDING)
+  reviewType          ReviewType
+  
+  // Failure Handling
+  failureReason       String?
+  failureCode         String?
+  
+  // Invoice
+  invoiceUrl          String?
+  invoiceNumber       String?
+  receiptSent         Boolean       @default(false)
+  receiptSentAt       DateTime?
+  
+  // Refund
+  refundId            String?
+  refundAmount        Decimal?      @db.Decimal(10, 2)
+  refundStatus        String?
+  refundReason        String?
+  
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  
+  @@index([razorpayOrderId])
+  @@index([status])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+// ============================================
+// DOCUMENT MANAGEMENT
+// ============================================
+
+model Document {
+  id                  String             @id @default(uuid())
+  leadId              String
+  lead                Lead               @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  
+  // File Information
+  docType             DocType
+  fileName            String
+  originalName        String
+  fileSize            Int                // in bytes
+  mimeType            String
+  
+  // Storage
+  s3Key               String             @unique
+  s3Bucket            String             @default("finflow-documents")
+  encrypted           Boolean            @default(true)
+  
+  // Verification
+  verificationStatus  VerificationStatus @default(PENDING)
+  verifiedBy          String?
+  verifiedAt          DateTime?
+  rejectionReason     String?
+  
+  uploadedAt          DateTime           @default(now())
+  
+  @@index([leadId])
+  @@index([docType])
+  @@index([verificationStatus])
+}
+
+enum DocType {
+  PAN
+  AADHAAR
+  GST_CERTIFICATE
+  ITR
+  BANK_STATEMENT
+  BUSINESS_PROOF
+  ADDRESS_PROOF
+  PHOTO
+  OTHER
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+// ============================================
+// CRM NOTES & COMMUNICATION
+// ============================================
+
+model Note {
+  id          String   @id @default(uuid())
+  leadId      String
+  lead        Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  
+  authorId    String
+  content     String
+  isInternal  Boolean  @default(false)  // Visible to customer or not
+  tags        String[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([leadId])
+  @@index([authorId])
+}
+
+// ============================================
+// NOTIFICATIONS
+// ============================================
+
+model Notification {
+  id          String             @id @default(uuid())
+  userId      String
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  title       String
+  message     String
+  type        NotificationType
+  isRead      Boolean            @default(false)
+  readAt      DateTime?
+  
+  actionUrl   String?            // Deep link for action
+  metadata    Json?
+  
+  createdAt   DateTime           @default(now())
+  
+  @@index([userId])
+  @@index([isRead])
+  @@index([type])
+}
+
+enum NotificationType {
+  PAYMENT_SUCCESS
+  PAYMENT_FAILED
+  DOCUMENT_UPLOADED
+  DOCUMENT_VERIFIED
+  DOCUMENT_REJECTED
+  STATUS_UPDATE
+  REMINDER
+  MESSAGE
+  SYSTEM
+}
+
+// ============================================
+// ACTIVITY LOGS (AUDIT TRAIL)
+// ============================================
+
+model ActivityLog {
+  id          String   @id @default(uuid())
+  leadId      String?
+  lead        Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  
+  userId      String?
+  action      String   // e.g., "LEAD_CREATED", "PAYMENT_RECEIVED", "STATUS_CHANGED"
+  description String
+  metadata    Json?
+  
+  ipAddress   String?
+  userAgent   String?
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([leadId])
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+// ============================================
+// REVIEWS & TESTIMONIALS
+// ============================================
+
+model Review {
+  id          String   @id @default(uuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  customerName String
+  location    String?
+  rating      Int      // 1-5
+  comment     String
+  isApproved  Boolean  @default(false)
+  
+  // Moderation
+  moderatedBy String?
+  moderatedAt DateTime?
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([isApproved])
+  @@index([rating])
+}
+
+// ============================================
+// BLOG & SEO CONTENT
+// ============================================
+
+model BlogPost {
+  id          String   @id @default(uuid())
+  title       String
+  slug        String   @unique
+  excerpt     String
+  content     String   // Markdown/HTML
+  
+  // Media
+  coverImage  String?
+  
+  // Author
+  authorId    String
+  
+  // Publishing
+  published   Boolean  @default(false)
+  publishedAt DateTime?
+  views       Int      @default(0)
+  
+  // SEO
+  seoTitle    String?
+  seoDesc     String?
+  keywords    String[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([slug])
+  @@index([published])
+  @@index([publishedAt])
+}
+
+// ============================================
+// EMPLOYEE MANAGEMENT
+// ============================================
+
+model Employee {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  employeeId  String   @unique  // e.g., "EMP001"
+  department  String   // Sales, Operations, Support
+  designation String
+  permissions String[] // RBAC permissions
+  
+  // Performance
+  leadsAssigned Int    @default(0)
+  leadsConverted Int   @default(0)
+  
+  isActive    Boolean  @default(true)
+  joinedAt    DateTime @default(now())
+  leftAt      DateTime?
+  
+  @@index([employeeId])
+  @@index([department])
+  @@index([isActive])
+}
+
+// ============================================
+// AUTOMATION WORKFLOWS
+// ============================================
+
+model AutomationRule {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  
+  trigger     String   // e.g., "LEAD_CREATED", "PAYMENT_SUCCESS"
+  conditions  Json?    // Conditions to trigger
+  actions     Json     // Actions to perform
+  
+  isActive    Boolean  @default(true)
+  executionCount Int   @default(0)
+  lastExecutedAt DateTime?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([trigger])
+  @@index([isActive])
+}
+
+// ============================================
+// INTEGRATIONS
+// ============================================
+
+model Integration {
+  id          String   @id @default(uuid())
+  name        String   @unique  // e.g., "WHATSAPP", "GMAIL", "RAZORPAY"
+  
+  config      Json     // Encrypted configuration
+  isActive    Boolean  @default(false)
+  
+  lastSyncAt  DateTime?
+  syncStatus  String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([name])
+  @@index([isActive])
+}
