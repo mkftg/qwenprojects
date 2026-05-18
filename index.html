@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Browser AI App Builder</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs/loader.min.js"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">⚡ AI Builder</div>
+        <button id="newProjectBtn" class="btn">+ New Project</button>
+        <div class="section-title">Projects</div>
+        <ul id="projectList" class="list"></ul>
+        <div class="section-title row">
+          Files
+          <button id="newFileBtn" class="icon-btn">+</button>
+        </div>
+        <ul id="fileList" class="list"></ul>
+        <div class="sidebar-actions">
+          <button id="saveLocalBtn" class="btn secondary">Save Local</button>
+          <button id="exportBtn" class="btn secondary">Export</button>
+          <button id="settingsBtn" class="btn secondary">API Settings</button>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <section class="chat-panel">
+          <header>AI Chat</header>
+          <div id="chatMessages" class="chat-messages"></div>
+          <form id="chatForm" class="chat-input-row">
+            <textarea id="chatInput" placeholder="Ask AI to generate Android, Flutter, or web app code..." required></textarea>
+            <button class="btn" type="submit">Send</button>
+          </form>
+        </section>
+
+        <section class="editor-panel">
+          <header>
+            <span id="activeFileLabel">No file selected</span>
+            <button id="runPreviewBtn" class="btn secondary">Run Preview</button>
+          </header>
+          <div id="editor"></div>
+        </section>
+
+        <section class="preview-panel">
+          <header>Preview</header>
+          <iframe id="previewFrame" title="Preview"></iframe>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="settingsModal">
+      <form id="settingsForm" method="dialog" class="modal-card">
+        <h3>AI API Settings</h3>
+        <label>API Base URL <input id="apiUrl" placeholder="https://api.openai.com/v1" required /></label>
+        <label>API Key <input id="apiKey" type="password" placeholder="sk-..." required /></label>
+        <label>Model <input id="apiModel" placeholder="gpt-4o-mini" required /></label>
+        <menu>
+          <button value="cancel" class="btn secondary" type="button" id="closeSettings">Cancel</button>
+          <button value="default" class="btn" type="submit">Save</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <script src="app.js"></script>
+  </body>
+</html>
